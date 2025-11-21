@@ -1,9 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <signal.h>
 
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 void *thread1_function(void *arg);
 void *thread2_function(void *arg);
+int turn = 0; // thread1 = 0, thread2 = 1
+
+void SIGINT_handler(int sig);
+void init_SIGINT();
+volatile sig_atomic_t QUIT = 0;
 
 int main(){
 	pthread_t tid1, tid2;
@@ -38,3 +48,19 @@ void *thread2_function(void *arg){
 	printf("Hi, i am thread 2.\n");
 	pthread_exit(NULL);
 }
+
+void SIGINT_handler(int sig){
+	(void)sig;
+	QUIT = 1;
+}
+
+void init_SIGINT(){
+	struct sigaction act = {0};
+	act.sa_handler = SIGINT_handler;
+
+	if(sigaction(SIGINT, &act, NULL) == -1){
+		fprintf(stderr, "Error: unable to initialize SIGINT signal.\n");
+		exit(1);
+	}
+}
+
