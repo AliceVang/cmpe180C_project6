@@ -7,7 +7,7 @@
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond1 = PTHREAD_COND_INITIALIZER;
-pthread_cont_t cond2 = PTHREAD_COND_INITIALIZER;
+pthread_cond_t cond2 = PTHREAD_COND_INITIALIZER;
 void *thread1_function(void *arg);
 void *thread2_function(void *arg);
 int turn = 0; // thread1 = 0, thread2 = 1
@@ -19,22 +19,26 @@ volatile sig_atomic_t QUIT = 0;
 int main(){
 	pthread_t tid1, tid2;
 	int id = 1;
+	init_SIGINT();
 
-	int thread1 = pthread_create(&tid1, NULL, thread1_function, &id);
-	if(thread1 != 0){
-		fprintf(stderr, "Error: unable to create thread 1: %d", thread1);
+	if(pthread_create(&tid1, NULL, thread1_function, &id)!=0){
+		fprintf(stderr, "Error: unable to create thread 1\n");
 		return 1;
 	}
 
-	int thread2 = pthread_create(&tid2, NULL, thread2_function, &id);
-	if(thread2 != 0){
-		fprintf(stderr, "Error: unable to create thread 2: %d", thread2);
+	if(pthread_create(&tid2, NULL, thread2_function, &id)!=0){
+		fprintf(stderr, "Error: unable to create thread 2\n");
 		return 1;
 	}
 
-	while(!stop){
+	while(!QUIT){
 		pause();
 	}
+
+	pthread_mutex_lock(&mutex);
+	pthread_cond_broadcast(&cond1);
+	pthread_cond_broadcast(&cond2);
+	pthread_mutex_unlock(&mutex);
 
 	pthread_join(tid1, NULL);
 	pthread_join(tid2, NULL);
@@ -47,44 +51,42 @@ int main(){
 
 // thread function
 void *thread1_function(void *arg){
-
+	(void)arg;
 	while(!QUIT){
 		pthread_mutex_lock(&mutex);
-		while(!turn && !QUIT){
-			pthread_cond_wait(&cond, &mutex);
+		while(turn != 0 && !QUIT){
+			pthread_cond_wait(&cond1, &mutex);
 		}
-		if(!stop){
+		if(QUIT){
 			pthread_mutex_unlock(&mutex);
 			break;
 		}
 	
 		printf("thread 1: ping thread 2\n");
-		fflush();
-	
+		fflush(stdout);
+		sleep(1);
+
 		turn = 1;
 		pthread_cond_signal(&cond2);
 		pthread_cond_wait(&cond1, &mutex);
+	//	pthread_mutex_unlock(&mutex);
 		if(QUIT){
 			pthread_mutex_unlock(&mutex);
 			break;
 		}
 
 		printf("thread 1: pong! thread 2 ping recieved\n");
-		fflush();
-		pthread_mutex_unlocked(&mutex);
-		usleep(10000);
-
+		fflush(stdout);
+		sleep(1);
+		pthread_mutex_unlock(&mutex);
 	}
-//	int id = *(int *)arg;
-//	printf("Hi, i am thread 1.\n");
-//	pthread_exit(NULL);
 }
 
 void *thread2_function(void *arg){
 
 	while(!QUIT){
 		pthread_mutex_lock(&mutex);
-		while(turn && !QUIT){
+		while(turn != 1 && !QUIT){
 			pthread_cond_wait(&cond2, &mutex);
 		}
 
@@ -94,17 +96,15 @@ void *thread2_function(void *arg){
 		}
 
 		printf("thread 2: pong! thread 1 ping recieved\n");
-		fflush();
+		fflush(stdout);
+		sleep(1);
 		printf("thread 2: ping thread 1\n");
-		fflush();
+		fflush(stdout);
+		sleep(1);
 		turn = 0;
 		pthread_cond_signal(&cond1);
-		pthread_mutex_unlocked(&mutex);
-		usleep(10000);
+		pthread_mutex_unlock(&mutex);
 	}
-//	int id = *(int *)arg;
-//	printf("Hi, i am thread 2.\n");
-//	pthread_exit(NULL);
 }
 
 void SIGINT_handler(int sig){
